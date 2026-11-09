@@ -1,0 +1,22 @@
+# HARNESSWEAVER_ENV=prod: the Docker Compose stack (compose.yaml). Hostnames are the
+# compose service names; change them for your platform.
+models:
+  base_url: http://litellm:4000
+
+context:
+  kb:
+    store: { url: http://qdrant:6333 }
+    embedder: { base_url: http://litellm:4000 }
+    rerank: { base_url: http://litellm:4000 }
+
+# Runs, idempotency keys and online eval samples survive restarts (one file per replica).
+state: { use: sqlite, path: /data/harness.db }
+
+# Traces and metrics over OTLP, without prompt or answer content (capture_content: false).
+observability:
+  configure_sdk: true
+  exporter: otlp
+  endpoint: http://otel-collector:4318
+
+evals:
+  online: { sample_rate: 0.05, graders: [{ status: completed }] }

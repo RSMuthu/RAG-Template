@@ -1,0 +1,5 @@
+# Copy to api-keys.yaml (never commit it). Each API key acts for one tenant and principal;
+# the tenant and roles decide which documents retrieval may return (ingest.yaml acl).
+# Generate keys with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+"replace-with-a-long-random-key": { tenant: default, principal: web-app }
+"replace-with-another-key": { tenant: globex, principal: globex-portal, roles: [customer] }

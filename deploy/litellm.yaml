@@ -1,0 +1,45 @@
+# LiteLLM Proxy config for rag-service. The chat part is what
+# `harnessweaver gateway litellm harness.yaml -e prod` generates; the embedding and rerank
+# models are added by hand, because the spec only knows the chat models.
+# Set in .env (the gateway's environment, never the app's spec): LITELLM_MASTER_KEY, the
+# provider keys, and the provider model behind each name (any LiteLLM model name):
+#   HARNESSWEAVER_UPSTREAM_RAG_CHAT     e.g. anthropic/claude-sonnet-5-5
+#   HARNESSWEAVER_UPSTREAM_RAG_EMBED    e.g. openai/text-embedding-3-small
+#   HARNESSWEAVER_UPSTREAM_RAG_RERANK   e.g. cohere/rerank-v3.5 (only if rerank.kind: gateway)
+model_list:
+- model_name: rag-chat
+  litellm_params:
+    model: os.environ/HARNESSWEAVER_UPSTREAM_RAG_CHAT
+- model_name: rag-embed
+  litellm_params:
+    model: os.environ/HARNESSWEAVER_UPSTREAM_RAG_EMBED
+  model_info:
+    mode: embedding
+- model_name: rag-rerank
+  litellm_params:
+    model: os.environ/HARNESSWEAVER_UPSTREAM_RAG_RERANK
+  model_info:
+    mode: rerank
+router_settings:
+  num_retries: 2            # the gateway owns retries (RULES R5)
+  model_group_alias:
+    chat: rag-chat
+  timeout: 60               # the run deadline: the gateway gives up when the harness does
+litellm_settings:
+  turn_off_message_logging: true   # no prompt or answer content in gateway logs (R9)
+  callbacks:
+  - otel
+environment_variables:
+  OTEL_EXPORTER: otlp_http
+  OTEL_ENDPOINT: http://otel-collector:4318
+guardrails:
+- guardrail_name: harnessweaver-tools   # the service offers no tools: deny any tool call
+  litellm_params:
+    guardrail: tool_permission
+    mode: post_call
+    default_on: true
+    rules: []
+    default_action: deny
+    on_disallowed_action: block
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -1,0 +1,58 @@
+# The service with everything it talks to. Every port is published on 127.0.0.1 only.
+#   cp .env.example .env && cp api-keys.example.yaml api-keys.yaml   # then fill them in
+#   docker compose up -d --build
+#   docker compose run --rm app rag ingest
+# pgvector instead of Qdrant: set context.kb.store.kind: pgvector in harness.yaml, then
+#   docker compose --profile pgvector up -d --build
+name: rag
+
+services:
+  app:
+    build: { context: ., args: { EXTRAS: "qdrant pgvector" } }
+    env_file: .env
+    environment:
+      HARNESSWEAVER_ENV: prod
+      RAG_API_KEYS_FILE: /run/secrets/api_keys
+    secrets: [api_keys]
+    ports: ["127.0.0.1:8000:8000"]
+    volumes: ["app-data:/data"]
+    depends_on: [litellm, qdrant, otel-collector]
+    restart: unless-stopped
+
+  litellm:  # the model gateway: provider keys live here, not in the app
+    image: ghcr.io/berriai/litellm:main-v1.82.0-stable
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file: .env
+    volumes: ["./deploy/litellm.yaml:/app/config.yaml:ro"]
+    ports: ["127.0.0.1:4000:4000"]
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.20.0
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: ["qdrant-data:/qdrant/storage"]
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17-trixie
+    profiles: [pgvector]
+    environment: { POSTGRES_USER: rag, POSTGRES_PASSWORD: rag, POSTGRES_DB: rag }
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["pg-data:/var/lib/postgresql/data"]
+    restart: unless-stopped
+
+  otel-collector:  # receives traces and metrics; point deploy/otel-collector.yaml at your backend
+    image: otel/opentelemetry-collector-contrib:0.165.0
+    command: ["--config", "/etc/otelcol/config.yaml"]
+    volumes: ["./deploy/otel-collector.yaml:/etc/otelcol/config.yaml:ro"]
+    ports: ["127.0.0.1:4318:4318"]
+    restart: unless-stopped
+
+secrets:
+  api_keys:
+    file: ./api-keys.yaml
+
+volumes:
+  app-data:
+  qdrant-data:
+  pg-data:

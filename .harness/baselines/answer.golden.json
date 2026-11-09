@@ -1,0 +1,12 @@
+{
+  "suite": "golden",
+  "task": "answer",
+  "pass_rate": 1.0,
+  "cases": {
+    "refund-time": true,
+    "invoice-download-from-html": true,
+    "encryption-from-pdf": true,
+    "tenant-sees-its-own-contract": true,
+    "unknown-answers-nothing": true
+  }
+}

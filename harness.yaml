@@ -1,0 +1,84 @@
+# The RAG service's spec: models, retrieval, guards, budgets and evals in one place.
+# Overlays change what differs per environment: harness.offline.yaml (no network, no keys)
+# and harness.prod.yaml. HARNESSWEAVER_ENV picks one. See README.md, "Configuration".
+apiVersion: harnessweaver/v1
+kind: Harness
+metadata:
+  name: rag-service
+  owner: your-team
+  risk_tier: customer_facing
+
+# PII in the question is redacted, injection attempts in the question and in retrieved
+# passages are blocked, and secrets never leave in an answer.
+extends: ["profile://rag"]
+
+plugins:
+  local: ["app.plugin"]              # contributes app.retriever (app/plugin.py)
+
+models:
+  provider: openai.chat              # any OpenAI-compatible endpoint; usually the LiteLLM gateway
+  base_url: http://localhost:4000    # the gateway holds the provider keys (gateway/litellm.yaml)
+  api_key_env: LITELLM_API_KEY
+  default: chat
+  aliases: { chat: rag-chat }
+
+context:
+  kb:
+    use: app.retriever
+    max_items: 6                     # passages per question
+    max_tokens: 4000                 # and at most this much text (4 characters per token)
+    min_score: null                  # drop weak matches; tune it with `rag search`
+    store:
+      kind: qdrant                   # memory | qdrant | pgvector | pkg.module:Class
+      url: http://localhost:6333
+      collection: kb
+      api_key_env: QDRANT_API_KEY
+      dsn_env: DATABASE_URL          # used by kind: pgvector
+    embedder:
+      kind: openai                   # hashing | openai | pkg.module:Class
+      model: rag-embed               # a gateway alias, or a provider model name
+      base_url: http://localhost:4000
+      api_key_env: LITELLM_API_KEY
+    rerank:
+      kind: none                     # none | gateway | pkg.module:Class
+      model: rag-rerank
+      base_url: http://localhost:4000
+      api_key_env: LITELLM_API_KEY
+      candidates: 30
+
+guardrails:
+  input:
+    - { id: question-size, use: size.limit, max_chars: 4000 }
+
+budgets:
+  per_run: { max_usd: 0.10, deadline: 60s }
+
+# Who may start a run (run.start rules only restrict). Add your own: tenants, roles, hours.
+policy:
+  rules:
+    - id: anonymous-stays-in-default-tenant
+      hook: run.start
+      when: "principal.id == 'anonymous' && tenant != 'default'"
+      effect: deny
+      reason: "anonymous callers can only use the default tenant"
+
+tasks:
+  answer:
+    version: 1.0.0
+    runner: { use: session, handler: "app.flow:answer" }
+    output: app.models:Answer
+    budget: { max_model_calls: 2, max_usd: 0.05 }
+    guardrails:
+      output:
+        # Models often wrap NOT_FOUND in a sentence ("The sources don't say. NOT_FOUND"): reduce
+        # such a reply to NOT_FOUND, which the flow turns into "not found". Runs before citations.
+        - id: not-found
+          use: regex.deny
+          patterns: ['^[\s\S]*NOT[_ ]FOUND[\s\S]*$']
+          action: redact
+          replacement: NOT_FOUND
+        # Every answer sentence cites a passage this run retrieved; otherwise repair once.
+        - { id: citations, use: grounded.citations, action: repair }
+
+evals:
+  answer: [evals/golden.yaml, evals/redteam.yaml]

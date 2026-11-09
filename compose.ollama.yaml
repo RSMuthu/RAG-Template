@@ -1,0 +1,80 @@
+# Fully local: the RAG service, Qdrant and Ollama. No API keys; no data leaves your machine.
+#   docker compose -f compose.ollama.yaml up -d --build      # the first run downloads ~2.3 GB of models
+#   docker compose -f compose.ollama.yaml run --rm app rag ingest
+#   curl -s localhost:8000/v1/answer -H 'content-type: application/json' \
+#        -d '{"question": "How long does a refund take?"}'
+#
+# Every service shares the network of `net`, like containers in a Kubernetes pod, so the
+# localhost URLs in harness.ollama.yaml work inside the containers and on your machine alike:
+# with the stack up, `OLLAMA_API_KEY=ollama uv run rag ask "..." -e ollama` uses it from the host.
+#
+# Models run on the CPU (Docker on macOS has no GPU access). On Linux with an NVIDIA GPU and
+# the NVIDIA Container Toolkit, uncomment the `deploy` block of the ollama service.
+name: rag-ollama
+
+services:
+  net:  # only holds the shared network, so any other service can restart without cutting the rest off
+    image: registry.k8s.io/pause:3.10.1
+    ports:
+      - "127.0.0.1:8000:8000"              # app
+      - "127.0.0.1:6333:6333"              # qdrant
+      - "127.0.0.1:11434:11434"            # ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.40.15
+    network_mode: service:net
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h               # keep models loaded between requests
+    volumes: ["ollama-models:/root/.ollama"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  ollama-pull:  # downloads the models once; they stay in the ollama-models volume
+    image: ollama/ollama:0.40.15
+    network_mode: service:net              # so the CLI's default server, localhost:11434, is ollama
+    entrypoint: ["sh", "-c"]
+    # Keep these in sync with harness.ollama.yaml. A model that's already there isn't fetched
+    # again, so later starts work offline.
+    command:
+      - for m in llama3.2:3b nomic-embed-text; do ollama show $$m >/dev/null 2>&1 || ollama pull $$m || exit 1; done
+    depends_on:
+      ollama: { condition: service_healthy }
+    restart: "no"
+
+  qdrant:
+    image: qdrant/qdrant:v1.20.0
+    network_mode: service:net
+    volumes: ["qdrant-data:/qdrant/storage"]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  app:
+    build: { context: ., args: { EXTRAS: qdrant } }
+    network_mode: service:net
+    environment:
+      HARNESSWEAVER_ENV: ollama
+      OLLAMA_API_KEY: ollama               # Ollama ignores it; the OpenAI SDK needs one
+    volumes:                               # edit documents and ingest.yaml without rebuilding
+      - ./data:/app/data:ro
+      - ./ingest.yaml:/app/ingest.yaml:ro
+    depends_on:
+      qdrant: { condition: service_healthy }
+      ollama-pull: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  qdrant-data:
