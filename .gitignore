@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# RAG template: local state, indexes and secrets
+.harness/state.db
+.harness/index/
+.harness/dev/
+
+# API keys for the HTTP API
+api-keys.yaml

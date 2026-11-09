@@ -1,0 +1,23 @@
+# HARNESSWEAVER_ENV=offline: no network, no keys, no spend. Tests, evals and demos use it.
+# A scripted model stands in for the real one, the index is a local JSON file built by
+# `rag ingest`, and embeddings are hashed words.
+models:
+  provider: scripted
+  rules:
+    - contains: "Question: How long does a refund take"
+      reply: { text: "A refund reaches the card you paid with within five business days [public/refunds.md#0]." }
+    - contains: "Question: Where can I download my invoice"
+      reply: { text: "Every invoice is under Settings, Billing, where you can download it as a PDF [public/invoices.html#0]." }
+    - contains: "Question: How is my data encrypted"
+      reply: { text: "Customer data is encrypted at rest with AES-256 and in transit with TLS 1.3 [public/security.pdf#0]." }
+    # Only a Globex caller retrieves Globex's contract, so only then is it in the prompt.
+    - matches: "(?s)\\[globex/sla.md#0\\].*Question: How fast does support reply"
+      reply: { text: "Your contract promises a first reply from support within four hours [globex/sla.md#0]." }
+  replies:
+    - text: "NOT_FOUND"
+
+context:
+  kb:
+    min_score: 0.05
+    store: { kind: memory, path: .harness/index/kb.json }
+    embedder: { kind: hashing }

@@ -1,0 +1,10 @@
+.git
+.venv
+.harness/index
+.harness/state.db
+.harness/dev
+.env
+api-keys.yaml
+**/__pycache__
+.pytest_cache
+.ruff_cache

@@ -1,0 +1,27 @@
+# HARNESSWEAVER_ENV=ollama: everything local (compose.ollama.yaml). The chat model and the
+# embeddings come from Ollama's OpenAI-compatible API, passages from Qdrant. The URLs are
+# localhost because the stack shares one network: they work in the containers and on the host.
+# Change a model here and in the ollama-pull service of compose.ollama.yaml.
+models:
+  base_url: http://localhost:11434/v1
+  api_key_env: OLLAMA_API_KEY        # Ollama ignores the key, but the SDK needs one
+  timeout: 300s                      # CPU inference is slow; a GPU is much faster
+  aliases: { chat: "llama3.2:3b" }
+  prices:                            # local models cost nothing, so every run's cost is known
+    "llama3.2:3b": { input_per_mtok: 0, output_per_mtok: 0 }
+
+budgets:
+  per_run: { deadline: 300s }
+
+context:
+  kb:
+    # nomic-embed-text scores the passage that answers at about 0.7 and unrelated text at
+    # 0.3-0.4 on the sample documents; below 0.5 the model isn't asked at all. Re-tune it for
+    # your documents and embedder with `rag search -e ollama "<question>"`.
+    min_score: 0.5
+    store: { kind: qdrant, url: http://localhost:6333 }
+    embedder:
+      kind: openai
+      model: nomic-embed-text
+      base_url: http://localhost:11434/v1
+      api_key_env: OLLAMA_API_KEY

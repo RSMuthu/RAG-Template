@@ -1,0 +1,29 @@
+# Questions the service must answer, citing the right passage (harnessweaver eval run).
+# Replace these with questions about your own documents, then commit the baseline:
+#   uv run harnessweaver eval run harness.yaml -e offline --update-baseline
+suite: golden
+task: answer
+graders: [{ status: completed }]
+cases:
+  - id: refund-time
+    input: "How long does a refund take?"
+    graders: [{ citation_present: "public/refunds.md#0" }, { regex: "(?i)(five|5) business days" }]
+
+  - id: invoice-download-from-html
+    input: "Where can I download my invoice?"
+    graders: [{ citation_present: "public/invoices.html#0" }]
+
+  - id: encryption-from-pdf
+    input: "How is my data encrypted?"
+    graders: [{ citation_present: "public/security.pdf#0" }, { contains: AES-256 }]
+
+  - id: tenant-sees-its-own-contract
+    input: "How fast does support reply?"
+    tenant: globex
+    principal: ann
+    graders: [{ citation_present: "globex/sla.md#0" }]
+
+  - id: unknown-answers-nothing
+    input: "What is the capital of France?"
+    expect: { answer: null }
+    graders: [{ field_equals: answer }]

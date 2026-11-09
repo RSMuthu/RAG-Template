@@ -1,0 +1,28 @@
+# What `rag ingest` indexes. The store and embedder come from harness.yaml
+# (context.<target>), so indexing and retrieval always agree.
+target: kb
+
+chunking:
+  size: 1200       # characters per chunk
+  overlap: 150     # characters repeated between neighbouring chunks
+
+sources:
+  # Paths are relative to this file. A document's id is <name>/<path under the folder>,
+  # and the answer cites its chunks as [<name>/<path>#<n>]. name defaults to the folder name.
+  - type: files
+    path: data/sample/public
+    include: ["**/*.md", "**/*.txt", "**/*.html", "**/*.pdf", "**/*.docx"]
+
+  # Who may see a document: empty lists restrict nothing; HarnessWeaver re-checks it.
+  - type: files
+    path: data/sample/globex
+    acl: { tenants: [globex] }
+    metadata: { collection: contracts }
+
+  # - type: urls
+  #   urls: [https://example.com/docs/getting-started]
+  #   acl: { roles: [staff] }
+
+# Your own parsers, by file extension: a function (data: bytes) -> list[Section].
+# loaders:
+#   ".csv": mypkg.loaders:load_csv
